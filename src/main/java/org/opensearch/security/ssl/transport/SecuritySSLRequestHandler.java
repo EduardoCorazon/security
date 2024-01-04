@@ -21,10 +21,9 @@ import java.lang.reflect.Method;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
-
+import java.util.Set;
 import javax.net.ssl.SSLPeerUnverifiedException;
 
-import io.netty.handler.ssl.SslHandler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -45,6 +44,8 @@ import org.opensearch.transport.TransportRequest;
 import org.opensearch.transport.TransportRequestHandler;
 import org.opensearch.transport.netty4.Netty4TcpChannel;
 
+import io.netty.handler.ssl.SslHandler;
+
 public class SecuritySSLRequestHandler<T extends TransportRequest> implements TransportRequestHandler<T> {
 
     private final String action;
@@ -54,6 +55,8 @@ public class SecuritySSLRequestHandler<T extends TransportRequest> implements Tr
     private final PrincipalExtractor principalExtractor;
     private final SslExceptionHandler errorHandler;
     private final SSLConfig SSLConfig;
+
+    private static final Set<String> DEFAULT_CHANNEL_TYPES = Set.of("direct", "transport");
 
     public SecuritySSLRequestHandler(
         String action,
@@ -86,6 +89,11 @@ public class SecuritySSLRequestHandler<T extends TransportRequest> implements Tr
 
         ThreadContext threadContext = getThreadContext();
 
+        String channelType = channel.getChannelType();
+        if (!DEFAULT_CHANNEL_TYPES.contains(channelType)) {
+            channel = getInnerChannel(channel);
+        }
+
         threadContext.putTransient(
             ConfigConstants.USE_JDK_SERIALIZATION,
             channel.getVersion().before(ConfigConstants.FIRST_CUSTOM_SERIALIZATION_SUPPORTED_OS_VERSION)
@@ -95,11 +103,6 @@ public class SecuritySSLRequestHandler<T extends TransportRequest> implements Tr
             final Exception exception = ExceptionUtils.createBadHeaderException();
             channel.sendResponse(exception);
             throw exception;
-        }
-
-        String channelType = channel.getChannelType();
-        if (!channelType.equals("direct") && !channelType.equals("transport")) {
-            channel = getInnerChannel(channel);
         }
 
         if (!"transport".equals(channel.getChannelType())) { // netty4

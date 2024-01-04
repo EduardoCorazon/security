@@ -11,21 +11,14 @@
 
 package com.amazon.dlic.auth.http.jwt;
 
-import static org.apache.http.HttpHeaders.AUTHORIZATION;
-
 import java.nio.file.Path;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Collection;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.regex.Pattern;
-
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtParser;
-import io.jsonwebtoken.JwtParserBuilder;
-import io.jsonwebtoken.security.WeakKeyException;
 
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
@@ -33,6 +26,7 @@ import org.apache.logging.log4j.Logger;
 
 import org.opensearch.OpenSearchSecurityException;
 import org.opensearch.SpecialPermission;
+import org.opensearch.common.logging.DeprecationLogger;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.security.auth.HTTPAuthenticator;
@@ -41,9 +35,17 @@ import org.opensearch.security.filter.SecurityResponse;
 import org.opensearch.security.user.AuthCredentials;
 import org.opensearch.security.util.KeyUtils;
 
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtParser;
+import io.jsonwebtoken.JwtParserBuilder;
+import io.jsonwebtoken.security.WeakKeyException;
+
+import static org.apache.http.HttpHeaders.AUTHORIZATION;
+
 public class HTTPJwtAuthenticator implements HTTPAuthenticator {
 
     protected final Logger log = LogManager.getLogger(this.getClass());
+    protected final DeprecationLogger deprecationLog = DeprecationLogger.getLogger(this.getClass());
 
     private static final Pattern BASIC = Pattern.compile("^\\s*Basic\\s.*", Pattern.CASE_INSENSITIVE);
     private static final String BEARER = "bearer ";
@@ -68,6 +70,13 @@ public class HTTPJwtAuthenticator implements HTTPAuthenticator {
         subjectKey = settings.get("subject_key");
         requireAudience = settings.get("required_audience");
         requireIssuer = settings.get("required_issuer");
+
+        if (!jwtHeaderName.equals(AUTHORIZATION)) {
+            deprecationLog.deprecate(
+                "jwt_header",
+                "The 'jwt_header' setting will be removed in the next major version of OpenSearch.  Consult https://github.com/opensearch-project/security/issues/3886 for more details."
+            );
+        }
 
         final JwtParserBuilder jwtParserBuilder = KeyUtils.createJwtParserBuilderFromSigningKey(signingKey, log);
         if (jwtParserBuilder == null) {

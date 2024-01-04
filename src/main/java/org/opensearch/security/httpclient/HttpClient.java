@@ -13,6 +13,8 @@ package org.opensearch.security.httpclient;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
@@ -26,7 +28,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -177,14 +178,8 @@ public class HttpClient implements Closeable {
         this.supportedCipherSuites = supportedCipherSuites;
         this.keystoreAlias = keystoreAlias;
 
-        HttpHost[] hosts = Arrays.stream(servers)
-            .map(s -> s.split(":"))
-            .map(s -> new HttpHost(ssl ? "https" : "http", s[0], Integer.parseInt(s[1])))
-            .collect(Collectors.toList())
-            .toArray(new HttpHost[0]);
-
+        HttpHost[] hosts = createHosts(servers);
         RestClientBuilder builder = RestClient.builder(hosts);
-        // builder.setMaxRetryTimeoutMillis(10000);
 
         builder.setFailureListener(new RestClient.FailureListener() {
             @Override
@@ -207,6 +202,24 @@ public class HttpClient implements Closeable {
         });
 
         rclient = new RestHighLevelClient(builder);
+    }
+
+    private HttpHost[] createHosts(String[] servers) {
+        return Arrays.stream(servers).map(server -> {
+            try {
+                server = addSchemeBasedOnSSL(server);
+                URI uri = new URI(server);
+                return new HttpHost(uri.getScheme(), uri.getHost(), uri.getPort());
+            } catch (URISyntaxException e) {
+                return null;
+            }
+        }).filter(Objects::nonNull).collect(Collectors.toList()).toArray(HttpHost[]::new);
+    }
+
+    private String addSchemeBasedOnSSL(String server) {
+        server = server.replaceAll("https://|http://", "");
+        String protocol = ssl ? "https://" : "http://";
+        return protocol.concat(server);
     }
 
     public boolean index(final String content, final String index, final String type, final boolean refresh) {

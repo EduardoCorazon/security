@@ -28,17 +28,9 @@
 
 package org.opensearch.test.framework.cluster;
 
-import static java.lang.String.format;
-import static java.util.Objects.requireNonNull;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.notNullValue;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -48,9 +40,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
-
 import javax.net.ssl.SSLContext;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.io.IOUtils;
 import org.apache.hc.client5.http.classic.methods.HttpDelete;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
@@ -66,19 +59,23 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.routing.HttpRoutePlanner;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
-import org.apache.hc.core5.http.NameValuePair;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.apache.hc.core5.http.message.BasicHeader;
-import org.apache.hc.core5.net.URIBuilder;
+import org.apache.http.HttpHeaders;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.core.common.Strings;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.security.DefaultObjectMapper;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
+import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
 
 /**
 * A OpenSearch REST client, which is tailored towards use in integration tests. Instances of this class can be
@@ -108,17 +105,8 @@ public class TestRestClient implements AutoCloseable {
         this.sourceInetAddress = sourceInetAddress;
     }
 
-    public HttpResponse get(String path, List<NameValuePair> queryParameters, Header... headers) {
-        try {
-            URI uri = new URIBuilder(getHttpServerUri()).setPath(path).addParameters(queryParameters).build();
-            return executeRequest(new HttpGet(uri), headers);
-        } catch (URISyntaxException ex) {
-            throw new RuntimeException("Incorrect URI syntax", ex);
-        }
-    }
-
     public HttpResponse get(String path, Header... headers) {
-        return get(path, Collections.emptyList(), headers);
+        return executeRequest(new HttpGet(getHttpServerUri() + "/" + path), headers);
     }
 
     public HttpResponse getAuthInfo(Header... headers) {
@@ -285,7 +273,26 @@ public class TestRestClient implements AutoCloseable {
             this.header = inner.getHeaders();
             this.statusCode = inner.getCode();
             this.statusReason = inner.getReasonPhrase();
+
             inner.close();
+
+            if (this.body.length() != 0) {
+                verifyContentType();
+            }
+        }
+
+        private void verifyContentType() {
+            final String contentType = this.getHeader(HttpHeaders.CONTENT_TYPE).getValue();
+            if (contentType.contains("application/json")) {
+                assertThat("Response body format was not json, body: " + body, body.charAt(0), equalTo('{'));
+            } else {
+                assertThat(
+                    "Response body format was json, whereas content-type was " + contentType + ", body: " + body,
+                    body.charAt(0),
+                    not(equalTo('{'))
+                );
+            }
+
         }
 
         public String getContentType() {

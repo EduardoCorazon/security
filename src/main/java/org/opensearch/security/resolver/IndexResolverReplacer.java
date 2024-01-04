@@ -43,7 +43,6 @@ import java.util.stream.Collectors;
 import com.google.common.collect.ImmutableSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.greenrobot.eventbus.Subscribe;
 
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.DocWriteRequest;
@@ -57,6 +56,7 @@ import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.datastream.CreateDataStreamAction;
 import org.opensearch.action.admin.indices.mapping.put.PutMappingRequest;
 import org.opensearch.action.admin.indices.resolve.ResolveIndexAction;
+import org.opensearch.action.admin.indices.shrink.ResizeRequest;
 import org.opensearch.action.admin.indices.template.put.PutComponentTemplateAction;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkShardRequest;
@@ -94,6 +94,8 @@ import org.opensearch.snapshots.SnapshotInfo;
 import org.opensearch.snapshots.SnapshotUtils;
 import org.opensearch.transport.RemoteClusterService;
 import org.opensearch.transport.TransportRequest;
+
+import org.greenrobot.eventbus.Subscribe;
 
 import static org.opensearch.cluster.metadata.IndexAbstraction.Type.ALIAS;
 
@@ -776,6 +778,10 @@ public class IndexResolverReplacer {
                 return false;
             }
             ((CreateIndexRequest) request).index(newIndices.length != 1 ? null : newIndices[0]);
+        } else if (request instanceof ResizeRequest) {
+            // clone or shrink operations
+            provider.provide(((ResizeRequest) request).indices(), request, true);
+            provider.provide(((ResizeRequest) request).getTargetIndexRequest().indices(), request, true);
         } else if (request instanceof CreateDataStreamAction.Request) {
             provider.provide(((CreateDataStreamAction.Request) request).indices(), request, false);
         } else if (request instanceof ReindexRequest) {
